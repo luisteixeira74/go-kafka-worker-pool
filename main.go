@@ -12,14 +12,12 @@ import (
 	"github.com/segmentio/kafka-go"
 )
 
-// -------- MODELO DE TASK ----------
 type Task struct {
 	ID       string `json:"id"`
 	Customer string `json:"customer"`
 	Payload  string `json:"payload"`
 }
 
-// -------- WORKER POOL ------------
 type WorkerPool struct {
 	numWorkers int
 	taskChan   chan Task
@@ -31,7 +29,7 @@ type WorkerPool struct {
 func NewWorkerPool(n int) *WorkerPool {
 	return &WorkerPool{
 		numWorkers: n,
-		taskChan:   make(chan Task, 100),
+		taskChan:   make(chan Task, 100), // canal global de tasks bufferizado
 		workers:    make([]chan Task, n),
 		done:       make(chan struct{}),
 	}
@@ -40,7 +38,7 @@ func NewWorkerPool(n int) *WorkerPool {
 func (wp *WorkerPool) Start() {
 	// Inicializa workers
 	for i := 0; i < wp.numWorkers; i++ {
-		wp.workers[i] = make(chan Task, 10)
+		wp.workers[i] = make(chan Task, 10) // canal bufferizado para cada worker
 		wp.wg.Add(1)
 		go wp.workerLoop(i, wp.workers[i])
 	}
@@ -94,7 +92,7 @@ func (wp *WorkerPool) Stop() {
 }
 
 // -------- CONSUMER KAFKA ----------
-func consumerLoop(reader *kafka.Reader, tasks chan<- Task) {
+func consumerLoop(reader *kafka.Reader, wp *WorkerPool) {
 	log.Println("[consumer] iniciado...")
 
 	for {
@@ -110,12 +108,12 @@ func consumerLoop(reader *kafka.Reader, tasks chan<- Task) {
 			continue
 		}
 
-		tasks <- task
+		wp.Submit(task)
 		log.Printf("[consumer] enviada ao canal -> %+v\n", task)
 	}
 }
 
-// -------- FUNÇÃO AUXILIAR ----------
+// cria um hash inteiro a partir de uma string
 func hash(s string) int {
 	h := fnv.New32a()
 	h.Write([]byte(s))
@@ -124,7 +122,7 @@ func hash(s string) int {
 
 // -------- MAIN --------------------
 func main() {
-	wp := NewWorkerPool(3)
+	wp := NewWorkerPool(3) // 3 workers concorrentes
 	wp.Start()
 
 	reader := kafka.NewReader(kafka.ReaderConfig{
@@ -133,8 +131,7 @@ func main() {
 		GroupID: "payment-consumer-grupo",
 	})
 
-	go consumerLoop(reader, wp.taskChan)
+	go consumerLoop(reader, wp)
 
-	// bloqueia eternamente
-	select {}
+	select {} // mantém rodando
 }
