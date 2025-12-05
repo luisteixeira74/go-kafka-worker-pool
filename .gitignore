@@ -1,0 +1,81 @@
+# ==========================
+# Go
+# ==========================
+# Build artifacts
+/bin/
+/build/
+/dist/
+/out/
+
+# Binaries
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Compiled Go files
+*.test
+
+# Go workspaces
+go.work
+go.work.sum
+
+# Vendor (caso NÃO use go mod vendor)
+vendor/
+
+# Cache
+*.log
+*.cache/
+__debug_bin
+
+# ==========================
+# Docker / Compose
+# ==========================
+# Local override files
+docker-compose.override.yml
+docker-compose.local.yml
+
+# Docker artifacts
+*.env
+.env
+.env.local
+.env.dev
+.env.prod
+
+# Docker volumes (caso use bind local)
+data/
+volumes/
+
+# ==========================
+# Kafka local
+# ==========================
+# Kafka/ZooKeeper local storage
+kafka-data/
+zookeeper-data/
+kafka-logs/
+zookeeper-logs/
+
+# ==========================
+# IDEs
+# ==========================
+
+# VSCode
+.vscode/
+.history/
+
+# GoLand / IntelliJ
+.idea/
+*.iml
+
+# ==========================
+# OS / Editor
+# ==========================
+
+# macOS
+.DS_Store
+
+# Linux
+*~
+
+# Windows
+Thumbs.db
