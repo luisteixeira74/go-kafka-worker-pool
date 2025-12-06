@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 	"time"
+
+	"github.com/segmentio/kafka-go"
 )
 
 func TestHashDeterministico(t *testing.T) {
@@ -17,16 +19,17 @@ func TestHashDeterministico(t *testing.T) {
 
 func TestDispatcherAssignsSameWorker(t *testing.T) {
     wp := NewWorkerPool(3)
-    wp.Start()
+    results := make(chan kafka.Message)
+    wp.Start(results)
     defer wp.Stop()
 
     taskA1 := Task{ID: "1", Customer: "A", Payload: "t1"}
     taskA2 := Task{ID: "2", Customer: "A", Payload: "t2"}
-    
+
     wp.Submit(taskA1)
     wp.Submit(taskA2)
 
-    time.Sleep(100 * time.Millisecond) // deixa o dispatcher enviar
+    time.Sleep(1 * time.Millisecond) // deixa o dispatcher enviar
     // Aqui podemos inspecionar logs ou os canais internos (wp.workers) se exportarmos para teste
 }
 
@@ -47,7 +50,7 @@ func TestWorkerProcessing(t *testing.T) {
 
     ch <- Task{ID: "1", Customer: "A", Payload: "t1"}
     ch <- Task{ID: "2", Customer: "B", Payload: "t2"}
-    time.Sleep(50 * time.Millisecond)
+    time.Sleep(5 * time.Millisecond)
     close(done)
 
     if len(processed) != 2 {
@@ -74,10 +77,12 @@ func TestConsumerLoopSimulado(t *testing.T) {
 }
 
 func TestTwoWorkerPoolsCustomerRouting(t *testing.T) {
+    results := make(chan kafka.Message)
+    results2 := make(chan kafka.Message)
     wp1 := NewWorkerPool(3)
     wp2 := NewWorkerPool(3)
-    wp1.Start()
-    wp2.Start()
+    wp1.Start(results)
+    wp2.Start(results2)
     defer wp1.Stop()
     defer wp2.Stop()
 
@@ -98,7 +103,7 @@ func TestTwoWorkerPoolsCustomerRouting(t *testing.T) {
     }
 
     // Apenas para permitir que os dispatchers processem
-    time.Sleep(500 * time.Millisecond)
+    time.Sleep(5 * time.Millisecond)
 }
 
 
