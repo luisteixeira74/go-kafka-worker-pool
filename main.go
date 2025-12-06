@@ -16,6 +16,7 @@ type Task struct {
 	ID       string `json:"id"`
 	Customer string `json:"customer"`
 	Payload  string `json:"payload"`
+	Msg   kafka.Message
 }
 
 type WorkerPool struct {
@@ -35,12 +36,12 @@ func NewWorkerPool(n int) *WorkerPool {
 	}
 }
 
-func (wp *WorkerPool) Start() {
+func (wp *WorkerPool) Start(results chan<- kafka.Message) {
 	// Inicializa workers
 	for i := 0; i < wp.numWorkers; i++ {
 		wp.workers[i] = make(chan Task, 10) // canal bufferizado para cada worker
 		wp.wg.Add(1)
-		go wp.workerLoop(i, wp.workers[i])
+		go wp.workerLoop(i, wp.workers[i], results)
 	}
 
 	// Inicializa dispatcher
@@ -67,7 +68,7 @@ func (wp *WorkerPool) dispatcherLoop() {
 	}
 }
 
-func (wp *WorkerPool) workerLoop(id int, ch chan Task) {
+func (wp *WorkerPool) workerLoop(id int, ch chan Task, results chan<- kafka.Message) {
 	defer wp.wg.Done()
 	for {
 		select {
@@ -78,8 +79,21 @@ func (wp *WorkerPool) workerLoop(id int, ch chan Task) {
 			fmt.Printf("[Worker %d] processando task %s (%s)\n",
 				id, task.ID, task.Payload)
 			time.Sleep(500 * time.Millisecond) // simula processamento
+
+			err := processTask(task)
+			if err == nil {
+				results <- task.Msg  // commit só em caso de sucesso
+			} else {
+				log.Printf("[Worker %d] falha processando %s: %v", id, task.ID, err)
+				// não enviar para commit, Kafka vai reentregar
+			}
+
 		}
 	}
+}
+
+func processTask(t Task) error {
+	return nil
 }
 
 func (wp *WorkerPool) Submit(t Task) {
@@ -108,6 +122,9 @@ func consumerLoop(reader *kafka.Reader, wp *WorkerPool) {
 			continue
 		}
 
+		// Preenche a mensagem original no Task
+		task.Msg = msg
+
 		wp.Submit(task)
 		log.Printf("[consumer] enviada ao canal -> %+v\n", task)
 	}
@@ -123,13 +140,28 @@ func hash(s string) int {
 // -------- MAIN --------------------
 func main() {
 	wp := NewWorkerPool(3) // 3 workers concorrentes
-	wp.Start()
+	// canal global para commit de mensagens processadas
+    results := make(chan kafka.Message)
+	wp.Start(results)
 
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers: []string{"localhost:9092"},
 		Topic:   "payment-client-v1",
 		GroupID: "payment-consumer-grupo",
 	})
+
+    // goroutine que faz commit
+    go func() {
+        for msg := range results {
+            err := reader.CommitMessages(context.Background(), msg)
+            if err != nil {
+                log.Printf("[commit] falha offset=%d: %v", msg.Offset, err)
+            } else {
+                log.Printf("[commit] sucesso offset=%d", msg.Offset)
+            }
+        }
+    }()
+
 
 	go consumerLoop(reader, wp)
 
